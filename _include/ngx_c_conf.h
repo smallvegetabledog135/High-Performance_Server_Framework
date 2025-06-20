@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "ngx_global.h"  //一些全局/通用定义
+#include "ngx_global.h" 
 
 class CConfig
 {

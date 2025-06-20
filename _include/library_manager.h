@@ -1,10 +1,17 @@
+/*
+ * @Author: smallvegetabledog135 1642165809@qq.com
+ * @Date: 2025-02-16 00:55:15
+ * @LastEditors: smallvegetabledog135 1642165809@qq.com
+ * @LastEditTime: 2025-06-20 02:14:29
+ * @FilePath: /nginx/_include/library_manager.h
+ * @Description: è¿™æ˜¯é»˜è®¤è®¾ç½®,è¯·è®¾ç½®`customMade`, æ‰“å¼€koroFileHeaderæŸ¥çœ‹é…ç½® è¿›è¡Œè®¾ç½®: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #ifndef __LIBRARY_MANAGER_H__
 #define __LIBRARY_MANAGER_H__
 
 #include <string>
 #include <vector>
 #include <mysql/mysql.h>
-
 
 struct Book {
     int id;
@@ -28,7 +35,7 @@ public:
     bool isInitialized() const { return conn_ != nullptr; }
 private:
     MYSQL* conn_;
-    bool initialized_;  // Ìí¼ÓÕâ¸ö³ÉÔ±±äÁ¿ 
+    bool initialized_;  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô±ï¿½ï¿½ï¿½ï¿½ 
 };
 
 #endif // __LIBRARY_MANAGER_H__

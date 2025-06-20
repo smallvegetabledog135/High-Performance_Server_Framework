@@ -1,6 +1,11 @@
-﻿
-//和 crc32校验算法 有关的代码
-
+﻿/*
+ * @Author: smallvegetabledog135 1642165809@qq.com
+ * @Date: 2025-02-16 00:55:13
+ * @LastEditors: smallvegetabledog135 1642165809@qq.com
+ * @LastEditTime: 2025-06-20 04:14:49
+ * @FilePath: /nginx/misc/ngx_c_crc32.cpp
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,41 +55,20 @@ void CCRC32::Init_CRC32_Table()
         
 		for (int j = 0; j < 8; j++)
         {
-            //if(i == 1)
-            //{
-            //    unsigned int tmp1 = (crc32_table[i] << 1);
-            //    unsigned int tmp2 = (crc32_table[i] & (1 << 31) ? ulPolynomial : 0);
-            //    unsigned int tmp3 = tmp1 ^ tmp2;
-            //    tmp3 += 1;
-            //    tmp3 -= 1;
-            //
-            //}
-            
 			crc32_table[i] = (crc32_table[i] << 1) ^ (crc32_table[i] & (1 << 31) ? ulPolynomial : 0);
-            //if (i == 1)printf("old3--i=%d,crc32_table[%d] = %lu\r\n",i,i,crc32_table[i]);
         }
-        //if (i == 1)printf("old2--i=%d,crc32_table[%d] = %lu\r\n",i,i,crc32_table[i]);
 		crc32_table[i] = Reflect(crc32_table[i], 32);
 	}
 
 }
 //用crc32_table寻找表来产生数据的CRC值
-//int CCRC32::Get_CRC(unsigned char* buffer, unsigned long dwSize)
 int CCRC32::Get_CRC(unsigned char* buffer, unsigned int dwSize)
 {
-	// Be sure to use unsigned variables,
-	// because negative values introduce high bits
-	// where zero bits are required.
-	//unsigned long  crc(0xffffffff);
     unsigned int  crc(0xffffffff);
 	int len;
-	
 	len = dwSize;	
-	// Perform the algorithm on each character
-	// in the string, using the lookup table values.
 	while(len--)
 		crc = (crc >> 8) ^ crc32_table[(crc & 0xFF) ^ *buffer++];
-	// Exclusive OR the result with the beginning value.
 	return crc^0xffffffff;
 }
 

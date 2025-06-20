@@ -13,9 +13,9 @@
 
 #include "ngx_comm.h"
 
-//一些宏定义放在这里-----------------------------------------------------------
-#define NGX_LISTEN_BACKLOG  511    //已完成连接队列，nginx给511，我们也先按照这个来：不懂这个数字的同学参考第五章第四节
-#define NGX_MAX_EVENTS      512    //epoll_wait一次最多接收这么多个事件，nginx中缺省是512，我们这里固定给成512就行，没太大必要修改
+
+#define NGX_LISTEN_BACKLOG  511    //已完成连接队列
+#define NGX_MAX_EVENTS      512    //epoll_wait一次最多接收事件
 
 typedef struct ngx_listening_s   ngx_listening_t, *lpngx_listening_t;
 typedef struct ngx_connection_s  ngx_connection_t,*lpngx_connection_t;
@@ -23,16 +23,15 @@ typedef class  CSocekt           CSocekt;
 
 typedef void (CSocekt::*ngx_event_handler_pt)(lpngx_connection_t c); //定义成员函数指针
 
-//--------------------------------------------
-//一些专用结构定义放在这里，暂时不考虑放ngx_global.h里了
+
 struct ngx_listening_s  //和监听端口有关的结构
 {
 	int                       port;        //监听的端口号
 	int                       fd;          //套接字句柄socket
-	lpngx_connection_t        connection;  //连接池中的一个连接，注意这是个指针 
+	lpngx_connection_t        connection;  //连接池中的一个连接，指针 
 };
 
-//(1)该结构表示一个TCP连接【客户端主动发起的、Nginx服务器被动接受的TCP连接】
+//一个TCP连接:客户端主动发起的、Nginx服务器被动接受的TCP连接
 struct ngx_connection_s
 {		
 	ngx_connection_s();                                      //构造函数
@@ -44,20 +43,19 @@ struct ngx_connection_s
 	int                       fd;                            //套接字句柄socket
 	lpngx_listening_t         listening;                     //如果这个链接被分配给了一个监听套接字，那么这个里边就指向监听套接字对应的那个lpngx_listening_t的内存首地址		
 
-	//------------------------------------	
-	uint64_t                  iCurrsequence;                 //我引入的一个序号，每次分配出去时+1，此法也有可能在一定程度上检测错包废包，具体怎么用，用到了再说
-	struct sockaddr           s_sockaddr;                    //保存对方地址信息用的
-	//char                      addr_text[100]; //地址的文本信息，100足够，一般其实如果是ipv4地址，255.255.255.255，其实只需要20字节就够
+	uint64_t                  iCurrsequence;                 
+	struct sockaddr           s_sockaddr;                    //保存对方地址信息
+	//char                      addr_text[100]; //地址的文本信息
 
-	//和读有关的标志-----------------------
+	//标志-----------------------
 
 	ngx_event_handler_pt      rhandler;                       //读事件的相关处理方法
 	ngx_event_handler_pt      whandler;                       //写事件的相关处理方法
 
-	//和epoll事件有关
+	//epoll事件
 	uint32_t                  events;                         //和epoll事件有关  
 	
-	//和收包有关
+	//收包
 	unsigned char             curStat;                        //当前收包的状态
 	char                      dataHeadInfo[_DATA_BUFSIZE_];   //用于保存收到的数据的包头信息			
 	char                      *precvbuf;                      //接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
@@ -66,34 +64,33 @@ struct ngx_connection_s
 
 	pthread_mutex_t           logicPorcMutex;                 //逻辑处理相关的互斥量      
 
-	//和发包有关
+	//发包
 	std::atomic<int>          iThrowsendCount;                //发送消息，如果发送缓冲区满了，则需要通过epoll事件来驱动消息的继续发送，所以如果发送缓冲区满，则用这个变量标记
 	char                      *psendMemPointer;               //发送完成后释放用的，整个数据的头指针，其实是 消息头 + 包头 + 包体
 	char                      *psendbuf;                      //发送数据的缓冲区的头指针，开始 其实是包头+包体
 	unsigned int              isendlen;                       //要发送多少数据
 
-	//和回收有关
+	//回收
 	time_t                    inRecyTime;                     //入到资源回收站里去的时间
 
-	//和心跳包有关
+	//心跳包
 	time_t                    lastPingTime;                   //上次ping的时间【上次发送心跳包的事件】
 
-	//和网络安全有关	
+	//网络安全	
 	uint64_t                  FloodkickLastTime;              //Flood攻击上次收到包的时间
 	int                       FloodAttackCount;               //Flood攻击在该时间内收到包的次数统计
 	std::atomic<int>          iSendCount;                     //发送队列中有的数据条目数，若client只发不收，则可能造成此数过大，依据此数做出踢出处理 
 	
 
 	//--------------------------------------------------
-	lpngx_connection_t        next;                           //这是个指针，指向下一个本类型对象，用于把空闲的连接池对象串起来构成一个单向链表，方便取用
+	lpngx_connection_t        next;                           //指针，指向下一个本类型对象，用于把空闲的连接池对象串起来构成一个单向链表，方便取用
 };
 
-//消息头，引入的目的是当收到数据包时，额外记录一些内容以备将来使用
+//消息头，当收到数据包时，额外记录一些内容以备将来使用
 typedef struct _STRUC_MSG_HEADER
 {
-	lpngx_connection_t pConn;         //记录对应的链接，注意这是个指针
-	uint64_t           iCurrsequence; //收到数据包时记录对应连接的序号，将来能用于比较是否连接已经作废用
-	//......其他以后扩展	
+	lpngx_connection_t pConn;         //记录对应的链接，是个指针
+	uint64_t           iCurrsequence; //收到数据包时记录对应连接的序号，将来能用于比较是否连接已经作废用	
 }STRUC_MSG_HEADER,*LPSTRUC_MSG_HEADER;
 
 //------------------------------------
@@ -110,34 +107,30 @@ public:
 	void printTDInfo();                                                   //打印统计信息
 
 public:
-	virtual void threadRecvProcFunc(char *pMsgBuf);                       //处理客户端请求，虚函数，因为将来可以考虑自己来写子类继承本类
-	virtual void procPingTimeOutChecking(LPSTRUC_MSG_HEADER tmpmsg,time_t cur_time);  //心跳包检测时间到，该去检测心跳包是否超时的事宜，本函数只是把内存释放，子类应该重新事先该函数以实现具体的判断动作
+	virtual void threadRecvProcFunc(char *pMsgBuf);                       //处理客户端请求，虚函数
+	virtual void procPingTimeOutChecking(LPSTRUC_MSG_HEADER tmpmsg,time_t cur_time);  //心跳包检测时间到，该去检测心跳包是否超时的事宜，本函数把内存释放，子类应重新事先该函数以实现具体的判断动作
 
 public:	
-	int  ngx_epoll_init();                                                //epoll功能初始化	
-	//int  ngx_epoll_add_event(int fd,int readevent,int writeevent,uint32_t otherflag,uint32_t eventtype,lpngx_connection_t pConn);     
-	                                                                      //epoll增加事件
+	int  ngx_epoll_init();                                                //epoll功能初始化	     
 	int  ngx_epoll_process_events(int timer);                             //epoll等待接收和处理事件
-
-	int ngx_epoll_oper_event(int fd,uint32_t eventtype,uint32_t flag,int bcaction,lpngx_connection_t pConn); 
-	                                                                      //epoll操作事件
+	int ngx_epoll_oper_event(int fd,uint32_t eventtype,uint32_t flag,int bcaction,lpngx_connection_t pConn);                                                                   //epoll操作事件
 	
 protected:
-	//数据发送相关
+	//数据发送
 	void msgSend(char *psendbuf);                                         //把数据扔到待发送对列中 
 	void zdClosesocketProc(lpngx_connection_t p_Conn);                    //主动关闭一个连接时的要做些善后的处理函数	
 	
 private:	
 	void ReadConf();                                                      //专门用于读各种配置项	
-	bool ngx_open_listening_sockets();                                    //监听必须的端口【支持多个端口】
+	bool ngx_open_listening_sockets();                                    //监听必须的端口
 	void ngx_close_listening_sockets();                                   //关闭监听套接字
 	bool setnonblocking(int sockfd);                                      //设置非阻塞套接字	
 
-	//一些业务处理函数handler
+	//业务处理函数handler
 	void ngx_event_accept(lpngx_connection_t oldc);                       //建立新连接
 	void ngx_read_request_handler(lpngx_connection_t pConn);              //设置数据来时的读处理函数
 	void ngx_write_request_handler(lpngx_connection_t pConn);             //设置数据发送时的写处理函数
-	void ngx_close_connection(lpngx_connection_t pConn);                  //通用连接关闭函数，资源用这个函数释放【因为这里涉及到好几个要释放的资源，所以写成函数】
+	void ngx_close_connection(lpngx_connection_t pConn);                  //通用连接关闭函数，资源用这个函数释放
 
 	ssize_t recvproc(lpngx_connection_t pConn,char *buff,ssize_t buflen); //接收从客户端来的数据专用函数
 	void ngx_wait_request_handler_proc_p1(lpngx_connection_t pConn,bool &isflood); 
@@ -148,10 +141,10 @@ private:
 
 	ssize_t sendproc(lpngx_connection_t c,char *buff,ssize_t size);       //将数据发送到客户端 
 
-	//获取对端信息相关                                              
+	//获取对端信息                                              
 	size_t ngx_sock_ntop(struct sockaddr *sa,int port,u_char *text,size_t len);  //根据参数1给定的信息，获取地址端口字符串，返回这个字符串的长度
 
-	//连接池 或 连接 相关
+	//连接池 和 连接 
 	void initconnection();                                                //初始化连接池
 	void clearconnection();                                               //回收连接池
 	lpngx_connection_t ngx_get_connection(int isock);                     //从连接池中获取一个空闲连接
@@ -161,12 +154,12 @@ private:
 	//和时间相关的函数
 	void    AddToTimerQueue(lpngx_connection_t pConn);                    //设置踢出时钟(向map表中增加内容)
 	time_t  GetEarliestTime();                                            //从multimap中取得最早的时间返回去
-	LPSTRUC_MSG_HEADER RemoveFirstTimer();                                //从m_timeQueuemap移除最早的时间，并把最早这个时间所在的项的值所对应的指针 返回，调用者负责互斥，所以本函数不用互斥，
-	LPSTRUC_MSG_HEADER GetOverTimeTimer(time_t cur_time);                  //根据给的当前时间，从m_timeQueuemap找到比这个时间更老（更早）的节点【1个】返回去，这些节点都是时间超过了，要处理的节点      
+	LPSTRUC_MSG_HEADER RemoveFirstTimer();                                //从m_timeQueuemap移除最早的时间，并把最早这个时间所在的项的值所对应的指针 返回，调用者负责互斥，本函数不互斥，
+	LPSTRUC_MSG_HEADER GetOverTimeTimer(time_t cur_time);                  //根据给的当前时间，从m_timeQueuemap找到比这个时间更老（更早）的节点【1个】返回去，这些节点是时间超过了，要处理的节点      
 	void DeleteFromTimerQueue(lpngx_connection_t pConn);                  //把指定用户tcp连接从timer表中抠出去
 	void clearAllFromTimerQueue();                                        //清理时间队列中所有内容
 
-	//和网络安全有关
+	//网络安全
 	bool TestFlood(lpngx_connection_t pConn);                             //测试是否flood攻击成立，成立则返回true，否则返回false
 
 	
@@ -177,7 +170,7 @@ private:
 	
 	
 protected:
-	//一些和网络通讯有关的成员变量
+	//和网络通讯有关的成员变量
 	size_t                         m_iLenPkgHeader;                       //sizeof(COMM_PKG_HEADER);		
 	size_t                         m_iLenMsgHeader;                       //sizeof(STRUC_MSG_HEADER);
 
@@ -227,7 +220,7 @@ private:
 	std::list<char *>              m_MsgSendQueue;                        //发送数据消息队列
 	std::atomic<int>               m_iSendMsgQueueCount;                  //发消息队列大小
 	//多线程相关
-	std::vector<ThreadItem *>      m_threadVector;                        //线程 容器，容器里就是各个线程了 	
+	std::vector<ThreadItem *>      m_threadVector;                        //线程容器，容器里就是各个线程了 	
 	pthread_mutex_t                m_sendMessageQueueMutex;               //发消息队列互斥量 
 	sem_t                          m_semEventSendQueue;                   //处理发消息线程相关的信号量 
 

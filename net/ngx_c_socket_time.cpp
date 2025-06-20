@@ -1,16 +1,14 @@
-﻿
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>    //uintptr_t
-#include <stdarg.h>    //va_start....
-#include <unistd.h>    //STDERR_FILENO等
-#include <sys/time.h>  //gettimeofday
-#include <time.h>      //localtime_r
-#include <fcntl.h>     //open
-#include <errno.h>     //errno
-//#include <sys/socket.h>
-#include <sys/ioctl.h> //ioctl
+#include <stdint.h>    
+#include <stdarg.h>    
+#include <unistd.h>    
+#include <sys/time.h>  
+#include <time.h>      
+#include <fcntl.h>     
+#include <errno.h>     
+#include <sys/ioctl.h> 
 #include <arpa/inet.h>
 
 #include "ngx_c_conf.h"
@@ -21,50 +19,61 @@
 #include "ngx_c_memory.h"
 #include "ngx_c_lockmutex.h"
 
-//设置踢出时钟(向multimap表中增加内容)，用户三次握手成功连入，然后我们开启了踢人开关【Sock_WaitTimeEnable = 1】，那么本函数被调用；
+//设置踢出时钟
 void CSocekt::AddToTimerQueue(lpngx_connection_t pConn)
 {
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "开始添加连接到超时检查队列, fd=%d", pConn->fd);  
+    
     CMemory *p_memory = CMemory::GetInstance();
 
     time_t futtime = time(NULL);
-    futtime += m_iWaitTime;  //20秒之后的时间
+    futtime += m_iWaitTime; 
 
-    CLock lock(&m_timequeueMutex); //互斥，因为要操作m_timeQueuemap了
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "连接将在 %d 秒后超时检查, fd=%d, 超时时间点=%ui",   
+                      m_iWaitTime, pConn->fd, (unsigned int)futtime);  
+
+
+    CLock lock(&m_timequeueMutex); //互斥
     LPSTRUC_MSG_HEADER tmpMsgHeader = (LPSTRUC_MSG_HEADER)p_memory->AllocMemory(m_iLenMsgHeader,false);
     tmpMsgHeader->pConn = pConn;
     tmpMsgHeader->iCurrsequence = pConn->iCurrsequence;
-    m_timerQueuemap.insert(std::make_pair(futtime,tmpMsgHeader)); //按键 自动排序 小->大
-    m_cur_size_++;  //计时队列尺寸+1
-    m_timer_value_ = GetEarliestTime(); //计时队列头部时间值保存到m_timer_value_里
+    m_timerQueuemap.insert(std::make_pair(futtime,tmpMsgHeader)); //按键自动排序小->大
+    m_cur_size_++;  //计时队列+1
+    ngx_log_error_core(NGX_LOG_DEBUG, 0, "连接已添加到超时检查队列, fd=%d, 当前队列大小=%d",   
+                      pConn->fd, m_cur_size_);  
+    
+    m_timer_value_ = GetEarliestTime(); // 计时队列头部时间值保存到m_timer_value_里  
+    ngx_log_error_core(NGX_LOG_DEBUG, 0, "更新最早超时时间点为 %ui", (unsigned int)m_timer_value_);  
+    
     return;    
 }
 
-//从multimap中取得最早的时间返回去，调用者负责互斥，所以本函数不用互斥，调用者确保m_timeQueuemap中一定不为空
 time_t CSocekt::GetEarliestTime()
 {
     std::multimap<time_t, LPSTRUC_MSG_HEADER>::iterator pos;	
 	pos = m_timerQueuemap.begin();		
-	return pos->first;	
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "获取最早超时时间点: %ui", (unsigned int)pos->first);  
+    return pos->first;	
 }
 
-//从m_timeQueuemap移除最早的时间，并把最早这个时间所在的项的值所对应的指针 返回，调用者负责互斥，所以本函数不用互斥，
+//从m_timeQueuemap移除最早的时间，并把最早这个时间所在的项的值所对应的指针返回
 LPSTRUC_MSG_HEADER CSocekt::RemoveFirstTimer()
 {
 	std::multimap<time_t, LPSTRUC_MSG_HEADER>::iterator pos;	
 	LPSTRUC_MSG_HEADER p_tmp;
 	if(m_cur_size_ <= 0)
 	{
-		return NULL;
+		ngx_log_error_core(NGX_LOG_DEBUG, 0, "RemoveFirstTimer()被调用但计时队列为空");  
+        return NULL;
 	}
-	pos = m_timerQueuemap.begin(); //调用者负责互斥的，这里直接操作没问题的
+	pos = m_timerQueuemap.begin(); 
 	p_tmp = pos->second;
 	m_timerQueuemap.erase(pos);
 	--m_cur_size_;
-	return p_tmp;
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "移除后计时队列大小=%d", m_cur_size_);  
+    return p_tmp;
 }
 
-//根据给的当前时间，从m_timeQueuemap找到比这个时间更老（更早）的节点【1个】返回去，这些节点都是时间超过了，要处理的节点
-//调用者负责互斥，所以本函数不用互斥
 LPSTRUC_MSG_HEADER CSocekt::GetOverTimeTimer(time_t cur_time)
 {	
 	CMemory *p_memory = CMemory::GetInstance();
@@ -74,27 +83,34 @@ LPSTRUC_MSG_HEADER CSocekt::GetOverTimeTimer(time_t cur_time)
 		return NULL; //队列为空
 
 	time_t earliesttime = GetEarliestTime(); //到multimap中去查询
+
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "检查超时: 当前时间=%ui, 最早超时时间=%ui",   
+                      (unsigned int)cur_time, (unsigned int)earliesttime);  
+     
 	if (earliesttime <= cur_time)
 	{
-		//这回确实是有到时间的了【超时的节点】
+		//这回确实是有【超时的节点】
 		ptmp = RemoveFirstTimer();    //把这个超时的节点从 m_timerQueuemap 删掉，并把这个节点的第二项返回来；
 
-		if(/*m_ifkickTimeCount == 1 && */m_ifTimeOutKick != 1)  //能调用到本函数第一个条件肯定成立，所以第一个条件加不加无所谓，主要是第二个条件
-		{
-			//如果不是要求超时就提出，则才做这里的事：
-
-			//因为下次超时的时间我们也依然要判断，所以还要把这个节点加回来        
+		if(/*m_ifkickTimeCount == 1 && */m_ifTimeOutKick != 1)
+		{      
 			time_t newinqueutime = cur_time+(m_iWaitTime);
 			LPSTRUC_MSG_HEADER tmpMsgHeader = (LPSTRUC_MSG_HEADER)p_memory->AllocMemory(sizeof(STRUC_MSG_HEADER),false);
 			tmpMsgHeader->pConn = ptmp->pConn;
 			tmpMsgHeader->iCurrsequence = ptmp->iCurrsequence;			
 			m_timerQueuemap.insert(std::make_pair(newinqueutime,tmpMsgHeader)); //自动排序 小->大			
-			m_cur_size_++;       
+			m_cur_size_++; 
+
+			ngx_log_error_core(NGX_LOG_DEBUG, 0, "连接超时但不踢出，重新加入队列, fd=%d, 新超时时间点=%ui",   
+                              ptmp->pConn->fd, (unsigned int)newinqueutime);  
+              
 		}
 
-		if(m_cur_size_ > 0) //这个判断条件必要，因为以后我们可能在这里扩充别的代码
+		if(m_cur_size_ > 0) 
 		{
 			m_timer_value_ = GetEarliestTime(); //计时队列头部时间值保存到m_timer_value_里
+		    ngx_log_error_core(NGX_LOG_DEBUG, 0, "更新最早超时时间点为 %ui", (unsigned int)m_timer_value_);  
+        
 		}
 		return ptmp;
 	}
@@ -104,12 +120,12 @@ LPSTRUC_MSG_HEADER CSocekt::GetOverTimeTimer(time_t cur_time)
 //把指定用户tcp连接从timer表中抠出去
 void CSocekt::DeleteFromTimerQueue(lpngx_connection_t pConn)
 {
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "开始从超时检查队列中删除连接, fd=%d", pConn->fd);  
+    
     std::multimap<time_t, LPSTRUC_MSG_HEADER>::iterator pos,posend;
 	CMemory *p_memory = CMemory::GetInstance();
 
     CLock lock(&m_timequeueMutex);
-
-    //因为实际情况可能比较复杂，将来可能还扩充代码等等，所以如下我们遍历整个队列找 一圈，而不是找到一次就拉倒，以免出现什么遗漏
 lblMTQM:
 	pos    = m_timerQueuemap.begin();
 	posend = m_timerQueuemap.end();
@@ -117,33 +133,50 @@ lblMTQM:
 	{
 		if(pos->second->pConn == pConn)
 		{			
+			ngx_log_error_core(NGX_LOG_DEBUG, 0, "从超时检查队列中找到并删除连接, fd=%d, 超时时间点=%ui",   
+                              pConn->fd, (unsigned int)pos->first);  
+            
 			p_memory->FreeMemory(pos->second);  //释放内存
 			m_timerQueuemap.erase(pos);
-			--m_cur_size_; //减去一个元素，必然要把尺寸减少1个;								
+			--m_cur_size_; //减去一个元素;								
 			goto lblMTQM;
 		}		
 	}
 	if(m_cur_size_ > 0)
 	{
-		m_timer_value_ = GetEarliestTime();
-	}
+		m_timer_value_ = GetEarliestTime();  
+        ngx_log_error_core(NGX_LOG_DEBUG, 0, "更新最早超时时间点为 %ui", (unsigned int)m_timer_value_);  
+    }
     return;    
 }
 
 //清理时间队列中所有内容
 void CSocekt::clearAllFromTimerQueue()
 {	
+	ngx_log_error_core(NGX_LOG_INFO, 0, "开始清理所有超时检查队列项, 当前队列大小=%d", m_cur_size_);  
+    
 	std::multimap<time_t, LPSTRUC_MSG_HEADER>::iterator pos,posend;
 
 	CMemory *p_memory = CMemory::GetInstance();	
 	pos    = m_timerQueuemap.begin();
-	posend = m_timerQueuemap.end();    
+	posend = m_timerQueuemap.end(); 
+	int clearedCount = 0;   
 	for(; pos != posend; ++pos)	
 	{
-		p_memory->FreeMemory(pos->second);		
-		--m_cur_size_; 		
+		if(pos->second != NULL && pos->second->pConn != NULL)  
+        {  
+            ngx_log_error_core(NGX_LOG_DEBUG, 0, "清理超时检查队列项, fd=%d, 超时时间点=%ui",   
+                              pos->second->pConn->fd, (unsigned int)pos->first);  
+        }  
+        
+        p_memory->FreeMemory(pos->second);        
+        --m_cur_size_;  
+        clearedCount++; 		
 	}
 	m_timerQueuemap.clear();
+
+	ngx_log_error_core(NGX_LOG_INFO, 0, "超时检查队列已清空, 共清理%d项", clearedCount);  
+    return;
 }
 
 //时间队列监视和处理线程，处理到期不发心跳包的用户踢出的线程
@@ -154,50 +187,75 @@ void* CSocekt::ServerTimerQueueMonitorThread(void* threadData)
 
     time_t absolute_time,cur_time;
     int err;
-
+    ngx_log_error_core(NGX_LOG_INFO, 0, "CSocekt::ServerTimerQueueMonitorThread()超时检查线程已启动");  
+    
     while(g_stopEvent == 0) //不退出
-    {
-        //这里没互斥判断，所以只是个初级判断，目的至少是队列为空时避免系统损耗		
+    {		
 		if(pSocketObj->m_cur_size_ > 0)//队列不为空，有内容
         {
-			//时间队列中最近发生事情的时间放到 absolute_time里；
-            absolute_time = pSocketObj->m_timer_value_; //这个可是省了个互斥，十分划算
+            absolute_time = pSocketObj->m_timer_value_; 
             cur_time = time(NULL);
+			ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::ServerTimerQueueMonitorThread()检查时间队列，当前队列大小=%d，最近超时时间=%d，当前时间=%d",   
+                             pSocketObj->m_cur_size_, absolute_time, cur_time);  
+            
             if(absolute_time < cur_time)
             {
-                //时间到了，可以处理了
-                std::list<LPSTRUC_MSG_HEADER> m_lsIdleList; //保存要处理的内容
+				ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::ServerTimerQueueMonitorThread()时间已到，开始处理超时事件");  
+                
+                std::list<LPSTRUC_MSG_HEADER> m_lsIdleList; 
                 LPSTRUC_MSG_HEADER result;
 
                 err = pthread_mutex_lock(&pSocketObj->m_timequeueMutex);  
-                if(err != 0) ngx_log_stderr(err,"CSocekt::ServerTimerQueueMonitorThread()中pthread_mutex_lock()失败，返回的错误码为%d!",err);//有问题，要及时报告
-                while ((result = pSocketObj->GetOverTimeTimer(cur_time)) != NULL) //一次性的把所有超时节点都拿过来
+                if(err != 0) {  
+                    ngx_log_stderr(err, "CSocekt::ServerTimerQueueMonitorThread()中pthread_mutex_lock()失败，返回的错误码为%d!", err); //有问题，要及时报告  
+                    ngx_log_error_core(NGX_LOG_ERR, err, "CSocekt::ServerTimerQueueMonitorThread()加锁互斥量失败");  
+                } 
+				while ((result = pSocketObj->GetOverTimeTimer(cur_time)) != NULL) 
 				{
 					m_lsIdleList.push_back(result); 
-				}//end while
+				}
+				ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::ServerTimerQueueMonitorThread()获取到%d个超时节点", m_lsIdleList.size());  
+                
                 err = pthread_mutex_unlock(&pSocketObj->m_timequeueMutex); 
-                if(err != 0)  ngx_log_stderr(err,"CSocekt::ServerTimerQueueMonitorThread()pthread_mutex_unlock()失败，返回的错误码为%d!",err);//有问题，要及时报告                
-                LPSTRUC_MSG_HEADER tmpmsg;
+                if(err != 0) {  
+                    ngx_log_stderr(err, "CSocekt::ServerTimerQueueMonitorThread()pthread_mutex_unlock()失败，返回的错误码为%d!", err); //有问题，要及时报告  
+                    ngx_log_error_core(NGX_LOG_ERR, err, "CSocekt::ServerTimerQueueMonitorThread()解锁互斥量失败");  
+                } 
+				LPSTRUC_MSG_HEADER tmpmsg;
+				int processedCount = 0; 
                 while(!m_lsIdleList.empty())
                 {
                     tmpmsg = m_lsIdleList.front();
-					m_lsIdleList.pop_front(); 
-                    pSocketObj->procPingTimeOutChecking(tmpmsg,cur_time); //这里需要检查心跳超时问题
-                } //end while(!m_lsIdleList.empty())
+					m_lsIdleList.pop_front();
+
+					ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::ServerTimerQueueMonitorThread()处理第%d个超时节点，连接fd=%d",   
+                                     ++processedCount, tmpmsg->pConn ? tmpmsg->pConn->fd : -1);  
+                     
+                    pSocketObj->procPingTimeOutChecking(tmpmsg,cur_time); //检查心跳超时问题
+                } 
+				ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::ServerTimerQueueMonitorThread()已处理完所有超时节点，共%d个", processedCount);  
+            
             }
-        } //end if(pSocketObj->m_cur_size_ > 0)
+        } 
         
         usleep(500 * 1000); //为简化问题，我们直接每次休息500毫秒
-    } //end while
+    } 
 
+    ngx_log_error_core(NGX_LOG_INFO, 0, "CSocekt::ServerTimerQueueMonitorThread()超时检查线程已退出");  
     return (void*)0;
 }
 
-//心跳包检测时间到，该去检测心跳包是否超时的事宜，本函数只是把内存释放，子类应该重新事先该函数以实现具体的判断动作
+//心跳包检测时间到，检测心跳包是否超时
 void CSocekt::procPingTimeOutChecking(LPSTRUC_MSG_HEADER tmpmsg,time_t cur_time)
 {
-	CMemory *p_memory = CMemory::GetInstance();
-	p_memory->FreeMemory(tmpmsg);    
+	ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::procPingTimeOutChecking()处理心跳包超时检查，连接fd=%d，当前时间=%d",   
+                     tmpmsg->pConn ? tmpmsg->pConn->fd : -1, cur_time);  
+
+    CMemory *p_memory = CMemory::GetInstance();  
+    p_memory->FreeMemory(tmpmsg);  
+    
+    ngx_log_error_core(NGX_LOG_DEBUG, 0, "CSocekt::procPingTimeOutChecking()释放了超时节点的内存");  
+    
 }
 
 

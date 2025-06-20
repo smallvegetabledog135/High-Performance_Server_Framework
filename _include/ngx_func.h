@@ -1,4 +1,11 @@
-﻿//函数声明放在这个头文件里-------------------------------------------
+﻿/*
+ * @Author: smallvegetabledog135 1642165809@qq.com
+ * @Date: 2025-02-16 00:55:16
+ * @LastEditors: smallvegetabledog135 1642165809@qq.com
+ * @LastEditTime: 2025-06-20 02:15:24
+ * @FilePath: /nginx/_include/ngx_func.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 
 #ifndef __NGX_FUNC_H__
 #define __NGX_FUNC_H__

@@ -1,10 +1,9 @@
-﻿
-#ifndef __NGX_THREADPOOL_H__
+﻿#ifndef __NGX_THREADPOOL_H__
 #define __NGX_THREADPOOL_H__
 
 #include <vector>
 #include <pthread.h>
-#include <atomic>   //c++11里的原子操作
+#include <atomic>
 
 //线程池相关类
 class CThreadPool
@@ -30,7 +29,7 @@ private:
     void clearMsgRecvQueue();                       //清理接收消息队列
 
 private:
-    //定义一个 线程池中的 线程 的结构，以后可能做一些统计之类的 功能扩展，所以引入这么个结构来 代表线程 感觉更方便一些；    
+    //定义一个线程池中的线程的结构    
     struct ThreadItem   
     {
         pthread_t   _Handle;                        //线程句柄
