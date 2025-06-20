@@ -9,13 +9,13 @@ make
 make clean
 ### 配置与启动
 # 配置文件（nginx.conf）
-1、WorkerProcesses	Worker进程数量  
-2、Daemon	是否以守护进程运行  
-3、ProcMsgRecvWorkThreadCount	消息处理线程数  
-4、ListenPort0	监听端口  
-5、worker_connections	每个Worker最大连接数  
-6、Sock_RecyConnectionWaitTime	连接回收等待时间(秒)  
-7、LogLevel	日志级别(0-8)  
+1、WorkerProcesses：Worker进程数量  
+2、Daemon：是否以守护进程运行  
+3、ProcMsgRecvWorkThreadCount：消息处理线程数  
+4、ListenPort0：监听端口  
+5、worker_connections：每个Worker最大连接数  
+6、Sock_RecyConnectionWaitTime：连接回收等待时间(秒)  
+7、LogLevel：日志级别(0-8)  
 # 启动服务器
 ./nginx
 # 二次开发
@@ -56,42 +56,4 @@ make clean
 └── nginx.conf # 主配置文件  
 # 请求处理流程    
 ![image](https://github.com/user-attachments/assets/0ed89f68-e0c7-49f6-af74-7e535b69dbf6)
-
-# 技术实现细节  
-
-# 线程池实现  
-
-线程池模块(`ngx_c_threadpool.cpp`)
-关键代码片段:  
-```cpp  
-// 线程池初始化  
-bool CThreadPool::Create(int threadNum)  
-{  
-    ThreadItem *pNew;  
-    int err;  
-
-    m_iRunningThreadNum = 0;   
-    m_iLastEmgTime = 0;        
-    
-    // 创建指定数量的工作线程  
-    for(int i = 0; i < threadNum; ++i)  
-    {  
-        m_threadVector.push_back(pNew = new ThreadItem(this));  
-        err = pthread_create(&pNew->_Handle, NULL, ThreadFunc, pNew);  
-        if(err != 0)  
-        {  
-            // 创建线程失败处理  
-            ngx_log_stderr(err,"CThreadPool::Create()创建线程%d失败，返回的错误码为%d!",i,err);  
-            return false;  
-        }  
-        else  
-        {  
-            // 创建线程成功  
-            ++m_iRunningThreadNum;  
-        }  
-    }  
-    return true;  
-}
-
-
 
