@@ -5,14 +5,15 @@
 ```
 sudo apt-get install libmysqlclient-dev
 ```
-2、编译   
-```
-make
-```  
-3、清理
+2、清理
 ```
 make clean
 ```
+3、编译   
+```
+make
+```  
+
 # 配置与启动
 # 配置文件（nginx.conf）
 1、WorkerProcesses：Worker进程数量  
