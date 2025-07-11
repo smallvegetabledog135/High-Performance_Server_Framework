@@ -61,9 +61,8 @@ make clean
 - <img width="1376" height="819" alt="image" src="https://github.com/user-attachments/assets/1acfe91c-af05-42da-a818-32c043e60aaa" />
 - 结果可以看到，占用内存引用次数最多的函数_dl_lookup_symbol_x、do_lookup_x、CCRC32::Reflect、CConfig::Load主要与动态库加载和crc32校验算法相关。
 - 通过KCachegrind看调用关系
-- <img width="725" height="577" alt="image" src="https://github.com/user-attachments/assets/63250084-c857-4dfc-bccb-9f5ff71b0e6e" />
-- <img width="486" height="514" alt="image" src="https://github.com/user-attachments/assets/7b31b064-f427-40b2-8e28-b24646ef3c46" />
--下一步优化方向：1、首先优化自定义函数，所以先优化crc校验算法。2、由于多个动态链接相关的函数耗时较高，考虑是否能够将某些库静态链接，以减少每次调用时的耗时。
+ - <img width="486" height="514" alt="image" src="https://github.com/user-attachments/assets/7b31b064-f427-40b2-8e28-b24646ef3c46" />
+- 优化方向：1、首先优化自定义函数，所以先优化crc校验算法。2、由于多个动态链接相关的函数耗时较高，考虑是否能够将某些库静态链接，以减少每次调用时的耗时。
 
 
 
